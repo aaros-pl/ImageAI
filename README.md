@@ -1,4 +1,41 @@
-# ImageAI (v2.1.5)
+# ImageAI (v2.1.5) - Custom
+## Custom version of ImageAI, modified for <a href="https://github.com/aaros-pl/Projekt">Project</a>
+Please install from source with requirements.txt
+
+### Dependencies
+<div id="dependencies"></div>
+
+To use **ImageAI-Custom** in your application developments, you must have installed the following 
+ dependencies before you install **ImageAI** : 
+ 
+ - Python 3.7.9
+ - Tensorflow 1.14.0
+ - OpenCV-contib 4.4.0 with freetype2 support
+ - Keras 2.3.1
+ - h5py 2.10
+ 
+ For Windows use:
+ First download requirements from Releases and then put them in requirements folder and run:
+ ```bash
+ pip install -r requirements.txt
+ ```
+ For Linux (Ubuntu 20.04LTS) use:
+ ```bash
+sudo apt install libfreetype* freetype2*
+pip install -U tensorflow-gpu==1.14.0 keras==2.3.1 opencv-contrib-python==4.4.0.44 h5py==2.10.0
+```
+
+### Installation
+<div id="installation"></div>
+ 
+To install ImageAI, run the python installation instruction below in the command line:
+
+```bash
+python3 setup.py install
+```
+
+<br><br><br>
+# Original README
 
 ![Discourse status](https://img.shields.io/discourse/https/forum.imageai.org/status) [![Build Status](https://travis-ci.com/OlafenwaMoses/ImageAI.svg?branch=master)](https://travis-ci.com/OlafenwaMoses/ImageAI)  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/OlafenwaMoses/ImageAI/blob/master/LICENSE) [![PyPI version](https://badge.fury.io/py/imageai.svg)](https://badge.fury.io/py/imageai)   [![Downloads](https://pepy.tech/badge/imageai/month)](https://pepy.tech/project/imageai/month) [![Downloads](https://pepy.tech/badge/imageai/week)](https://pepy.tech/project/imageai/week) [![codecov](https://codecov.io/gh/TechnionYP5777/project-name/branch/master/graph/badge.svg)](https://codecov.io/gh/OlafenwaMoses/ImageAI) 
 

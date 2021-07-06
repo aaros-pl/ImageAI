@@ -1,8 +1,7 @@
-tensorflow
-keras
-numpy
+requirements/tensorflow_gpu-1.14.0-cp37-cp37m-win_amd64.whl
+keras==2.3.1
 pillow
 scipy
-h5py
+h5py==2.10.0
 matplotlib
-opencv-python
+requirements/opencv_contrib_python-4.4.0.44-cp37-cp37m-win_amd64.whl
