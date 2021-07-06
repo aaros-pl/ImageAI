@@ -17,9 +17,14 @@ from keras.models import load_model, Input
 from keras.callbacks import TensorBoard
 import keras.backend as K
 import cv2
+import time
+from imageai.Detection.Custom.utils.AdamAccumulate import AdamAccumulate
+# from imageai.Detection.Custom.utils.AccumOptimizers import AccumOptimizer
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
+# gpu_options = tf.compat.v1.GPUOptions(allow_growth=True)
+# sess = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(gpu_options=gpu_options))
 
 class DetectionModelTrainer:
 
@@ -50,7 +55,7 @@ class DetectionModelTrainer:
         self.__train_epochs = 100
         self.__train_warmup_epochs = 3
         self.__train_ignore_treshold = 0.5
-        self.__train_gpus = "0"
+        self.__train_gpus = "0,1"
         self.__train_grid_scales = [1, 1, 1]
         self.__train_obj_scale = 5
         self.__train_noobj_scale = 1
@@ -66,6 +71,10 @@ class DetectionModelTrainer:
         self.__validation_cache_file = ""
         self.__validation_times = 1
 
+        self.__train_accum_iters = 1
+        self.__today = time.strftime("%Y%m%d-%H%M", time.localtime())
+        # today = time.strftime("%Y%m%d-%H%M", time.gmtime())
+
     def setModelTypeAsYOLOv3(self):
         """
         'setModelTypeAsYOLOv3()' is used to set the model type to the YOLOv3 model
@@ -74,10 +83,9 @@ class DetectionModelTrainer:
         """
         self.__model_type = "yolov3"
 
-    def setDataDirectory(self, data_directory):
+    def setDataDirectory(self, data_directory, training_mode=True):
 
         """
-
         'setDataDirectory()' is required to set the path to which the data/dataset to be used for
                  training is kept. The directory can have any name, but it must have 'train' and 'validation'
                  sub-directory. In the 'train' and 'validation' sub-directories, there must be 'images' and 'annotations'
@@ -105,10 +113,16 @@ class DetectionModelTrainer:
                                 >> annotations  >> img_151.xml
                                 >> annotations  >> img_152.xml
                                 >> annotations  >> img_153.xml
+        
+        - training_mode (optional), this is used to inform that directory for models will be created, if evaluatin use False 
 
         :param data_directory:
+        :param training_mode:
+
         :return:
         """
+        today = self.__today
+        self.__training_mode = training_mode
 
         self.__train_images_folder = os.path.join(data_directory, "train", "images")
         self.__train_annotations_folder = os.path.join(data_directory, "train", "annotations")
@@ -120,15 +134,17 @@ class DetectionModelTrainer:
         self.__validation_cache_file = os.path.join(data_directory, "cache", "detection_test_data.pkl")
 
         os.makedirs(os.path.join(data_directory, "models"), exist_ok=True)
+        if self.__training_mode == True:
+            os.makedirs(os.path.join(data_directory, "models", today), exist_ok=True)
 
         os.makedirs(os.path.join(data_directory, "json"), exist_ok=True)
 
         os.makedirs(os.path.join(data_directory, "logs"), exist_ok=True)
 
-        self.__model_directory = os.path.join(data_directory, "models")
+        self.__model_directory = os.path.join(data_directory, "models", today)
         self.__train_weights_name = os.path.join(self.__model_directory, "detection_model-")
         self.__json_directory = os.path.join(data_directory, "json")
-        self.__logs_directory = os.path.join(data_directory, "logs")
+        self.__logs_directory = os.path.join(data_directory, "logs", today)
 
     def setGpuUsage(self, train_gpus):
         """
@@ -148,7 +164,7 @@ class DetectionModelTrainer:
         # let it as a string separated by commas
         self.__train_gpus = ','.join([str(gpu) for gpu in train_gpus])
 
-    def setTrainConfig(self,  object_names_array, batch_size=4, num_experiments=100, train_from_pretrained_model=""):
+    def setTrainConfig(self,  object_names_array, batch_size=4, num_experiments=100, train_from_pretrained_model="", accum_iters=1, lr=1e-4):
 
         """
 
@@ -167,15 +183,17 @@ class DetectionModelTrainer:
         """
 
         self.__model_anchors, self.__inference_anchors = generateAnchors(self.__train_annotations_folder,
-                                                                         self.__train_images_folder,
-                                                                         self.__train_cache_file, self.__model_labels)
+                                                                          self.__train_images_folder,
+                                                                          self.__train_cache_file, self.__model_labels)
 
         self.__model_labels = sorted(object_names_array)
         self.__num_objects = len(object_names_array)
 
         self.__train_batch_size = batch_size
+        self.__train_accum_iters = accum_iters
         self.__train_epochs = num_experiments
         self.__pre_trained_model = train_from_pretrained_model
+        self.__train_learning_rate = lr
 
         json_data = dict()
         json_data["labels"] = self.__model_labels
@@ -184,6 +202,7 @@ class DetectionModelTrainer:
         with open(os.path.join(self.__json_directory, "detection_config.json"), "w+") as json_file:
             json.dump(json_data, json_file, indent=4, separators=(",", " : "),
                       ensure_ascii=True)
+            json_file.close()
 
         print("Detection configuration saved in ", os.path.join(self.__json_directory, "detection_config.json"))
 
@@ -213,8 +232,7 @@ class DetectionModelTrainer:
         if self.__training_mode:
             print('Training on: \t' + str(labels) + '')
             print("Training with Batch Size: ", self.__train_batch_size)
-            print("Number of Training Samples: ", len(train_ints))
-            print("Number of Validation Samples: ", len(valid_ints))
+            print("Training with iterations before gradient update: ", self.__train_accum_iters)
             print("Number of Experiments: ", self.__train_epochs)
 
         ###############################
@@ -273,6 +291,7 @@ class DetectionModelTrainer:
             noobj_scale=self.__train_noobj_scale,
             xywh_scale=self.__train_xywh_scale,
             class_scale=self.__train_class_scale,
+            accum_iters=self.__train_accum_iters
         )
 
         ###############################
@@ -314,9 +333,7 @@ class DetectionModelTrainer:
         """
 
         self.__training_mode = False
-
-        with open(json_path, 'r') as json_file:
-            detection_model_json = json.load(json_file)
+        detection_model_json = json.load(open(json_path))
 
         temp_anchor_array = []
         new_anchor_array = []
@@ -338,7 +355,7 @@ class DetectionModelTrainer:
 
         print("Starting Model evaluation....")
 
-        _, valid_ints, labels, max_box_per_image = self._create_training_instances(
+        train_ints, valid_ints, labels, max_box_per_image = self._create_training_instances(
             self.__train_annotations_folder,
             self.__train_images_folder,
             self.__train_cache_file,
@@ -348,12 +365,6 @@ class DetectionModelTrainer:
             self.__model_labels
 
         )
-
-        if len(valid_ints) == 0:
-            print('Validation samples were not provided.')
-            print('Please, check your validation samples are correctly provided:')
-            print('\tAnnotations: {}\n\tImages: {}'.format(self.__validation_annotations_folder,
-                                                           self.__validation_images_folder))
 
         valid_generator = BatchGenerator(
             instances=valid_ints,
@@ -367,6 +378,41 @@ class DetectionModelTrainer:
             shuffle=True,
             jitter=0.0,
             norm=normalize
+        )
+
+        train_generator = BatchGenerator(
+            instances=train_ints,
+            anchors=self.__model_anchors,
+            labels=labels,
+            downsample=32,  # ratio between network input's size and network output's size, 32 for YOLOv3
+            max_box_per_image=max_box_per_image,
+            batch_size=self.__train_batch_size,
+            min_net_size=self.__model_min_input_size,
+            max_net_size=self.__model_max_input_size,
+            shuffle=True,
+            jitter=0.3,
+            norm=normalize
+        )
+
+        multi_gpu = [int(gpu) for gpu in self.__train_gpus.split(',')]
+        warmup_batches = self.__train_warmup_epochs * (self.__train_times * len(train_generator))
+
+        train_model, infer_model = self._create_model(
+            nb_class=len(labels),
+            anchors=self.__model_anchors,
+            max_box_per_image=max_box_per_image,
+            max_grid=[self.__model_max_input_size, self.__model_max_input_size],
+            batch_size=self.__train_batch_size,
+            warmup_batches=warmup_batches,
+            ignore_thresh=self.__train_ignore_treshold,
+            multi_gpu=multi_gpu,
+            lr=self.__train_learning_rate,
+            grid_scales=self.__train_grid_scales,
+            obj_scale=self.__train_obj_scale,
+            noobj_scale=self.__train_noobj_scale,
+            xywh_scale=self.__train_xywh_scale,
+            class_scale=self.__train_class_scale,
+            accum_iters=self.__train_accum_iters
         )
 
         results = list()
@@ -383,9 +429,10 @@ class DetectionModelTrainer:
         else:
             print('model_path must be the path to a .h5 file or a directory. Found {}'.format(model_path))
             return results
-
+        i = 0
         for model_file in model_files:
             if str(model_file).endswith(".h5"):
+                i += 1
                 try:
                     infer_model = load_model(model_file)
 
@@ -394,39 +441,38 @@ class DetectionModelTrainer:
                     ###############################
                     # compute mAP for all the classes
                     average_precisions = evaluate(infer_model, valid_generator, iou_threshold=iou_threshold,
-                                                  obj_thresh=object_threshold, nms_thresh=nms_threshold)
+                                                obj_thresh=object_threshold, nms_thresh=nms_threshold)
 
                     result_dict = {
-                        'model_file': model_file,
-                        'using_iou': iou_threshold,
-                        'using_object_threshold': object_threshold,
-                        'using_non_maximum_suppression': nms_threshold,
-                        'average_precision': dict(),
-                        'evaluation_samples': len(valid_ints)
+                        "iteration": i,
+                        "model_file": model_file,
+                        "using_iou": iou_threshold,
+                        "using_object_threshold": object_threshold,
+                        "using_non_maximum_suppression": nms_threshold,
+                        "average_precision": dict()
                     }
                     # print the score
-                    print("Model File: ", model_file, '\n')
-                    print("Evaluation samples: ", len(valid_ints))
-                    print("Using IoU: ", iou_threshold)
-                    print("Using Object Threshold: ", object_threshold)
-                    print("Using Non-Maximum Suppression: ", nms_threshold)
-
+                    print("\nIteration: ", i)
+                    print("Model File: ", model_file)
+                    print("Using IoU : ", iou_threshold)
+                    print("Using Object Threshold : ", object_threshold)
+                    print("Using Non-Maximum Suppression : ", nms_threshold)
                     for label, average_precision in average_precisions.items():
-                        print(labels[label] + ': {:.4f}'.format(average_precision))
+                        print(labels[label] + ": {:.4f}".format(average_precision))
                         result_dict['average_precision'][labels[label]] = average_precision
-
-                    print('mAP: {:.4f}'.format(sum(average_precisions.values()) / len(average_precisions)))
+                    print("mAP: {:.4f}".format(sum(average_precisions.values()) / len(average_precisions)))
                     result_dict['map'] = sum(average_precisions.values()) / len(average_precisions)
                     print("===============================")
-
-                    results.append(result_dict)
+                    tf.compat.v1.reset_default_graph()
+                    # results.append(result_dict)
+                    yield result_dict
                 except Exception as e:
                     print('skipping the evaluation of {} because following exception occurred: {}'.format(model_file, e))
                     continue
             else:
-                print('skipping the evaluation of {} since it\'s not a .h5 file'.format(model_file))
-
-        return results
+                if not str(model_file).endswith(".json"):
+                    print('skipping the evaluation of {} since it\'s not a .h5 file'.format(model_file))
+        # return results
 
     def _create_training_instances(self,
             train_annot_folder,
@@ -445,23 +491,15 @@ class DetectionModelTrainer:
 
         if os.path.exists(valid_annot_folder):
             valid_ints, valid_labels = parse_voc_annotation(valid_annot_folder, valid_image_folder, valid_cache, labels)
-            print('Evaluating over {} samples taken from {}'.format(len(valid_ints),
-                                                                    os.path.dirname(valid_annot_folder)))
         else:
 
-            train_portion = 0.8  # use 80% to train and the remaining 20% to evaluate
-            train_valid_split = int(round(train_portion * len(train_ints)))
+            train_valid_split = int(0.8 * len(train_ints))
             np.random.seed(0)
             np.random.shuffle(train_ints)
+            np.random.seed()
 
             valid_ints = train_ints[train_valid_split:]
             train_ints = train_ints[:train_valid_split]
-            print('Evaluating over {} samples taken as {:5.2f}% of the training set '
-                  'given at {}'.format(len(valid_ints),
-                                       (1 - train_portion)*100,
-                                       os.path.dirname(train_annot_folder)))
-
-        print('Training over {} samples  given at {}'.format(len(train_ints), os.path.dirname(train_annot_folder)))
 
         # compare the seen labels with the given labels in config.json
         if len(labels) > 0:
@@ -469,11 +507,11 @@ class DetectionModelTrainer:
 
             # return None, None, None if some given label is not in the dataset
             if len(overlap_labels) < len(labels):
-                if self.__training_mode:
+                if(self.__training_mode):
                     print('Some labels have no annotations! Please revise the list of labels in your configuration.')
                 return None, None, None, None
         else:
-            if self.__training_mode:
+            if(self.__training_mode):
                 print('No labels are provided. Train on all seen labels.')
                 print(train_labels)
 
@@ -487,25 +525,32 @@ class DetectionModelTrainer:
 
         checkpoint = CustomModelCheckpoint(
             model_to_save=model_to_save,
-            filepath=saved_weights_name + 'ex-{epoch:03d}--loss-{loss:08.3f}.h5',
+            # filepath=saved_weights_name + 'ex-{epoch:03d}--loss-{loss:08.3f}.h5',
+            filepath=saved_weights_name + 'ex-{epoch:03d}--loss-{loss:07.3f}--val_loss-{val_loss:07.3f}.h5',
+            # filepath=saved_weights_name + '-{today}-ex-{epoch:03d}--loss-{loss:08.3f}.h5',
+            # filepath=saved_weights_name + 'ex-{epoch:03d}--vall_loss-{vall_loss:08.3f}.h5',
             monitor='loss',
-            verbose=0,
-            save_best_only=True,
+            verbose=1,
+            save_best_only=False,
             mode='min',
-            period=1
+            period=self.__train_accum_iters
         )
         reduce_on_plateau = ReduceLROnPlateau(
             monitor='loss',
+            # monitor='val_loss',
             factor=0.1,
             patience=2,
-            verbose=0,
+            # patience=3,
+            verbose=1,
             mode='min',
             epsilon=0.01,
             cooldown=0,
             min_lr=0
         )
+        # tensor_board = CustomTensorBoard(
         tensor_board = TensorBoard(
             log_dir=self.__logs_directory
+            # log_every=self.__train_accum_iters
         )
         return [checkpoint, reduce_on_plateau, tensor_board]
 
@@ -523,7 +568,8 @@ class DetectionModelTrainer:
             obj_scale,
             noobj_scale,
             xywh_scale,
-            class_scale
+            class_scale,
+            accum_iters
     ):
         if len(multi_gpu) > 1:
             with tf.device('/cpu:0'):
@@ -558,13 +604,12 @@ class DetectionModelTrainer:
             )
 
             # load the pretrained weight if exists, otherwise load the backend weight only
-
-        if len(self.__pre_trained_model) > 3:
-            if self.__training_mode:
+        if(len(self.__pre_trained_model) > 3):
+            if(self.__training_mode):
                 print("Training with transfer learning from pretrained Model")
             template_model.load_weights(self.__pre_trained_model, by_name=True)
         else:
-            if self.__training_mode:
+            if(self.__training_mode):
                 print("Pre-trained Model not provided. Transfer learning not in use.")
                 print("Training will start with 3 warmup experiments")
 
@@ -574,6 +619,8 @@ class DetectionModelTrainer:
             train_model = template_model
 
         optimizer = Adam(lr=lr, clipnorm=0.001)
+        # optimizer = AdamAccumulate(lr=lr, clipnorm=0.001, accum_iters=accum_iters)
+        # optimizer = AccumOptimizer(optimizer=optimizer, steps_per_update=accum_iters)
         train_model.compile(loss=dummy_loss, optimizer=optimizer)
 
         return train_model, infer_model
@@ -769,6 +816,7 @@ class CustomObjectDetection:
                 else:
                     yolo_results = self.__model.predict(image)
 
+
                 boxes = list()
 
                 for idx, result in enumerate(yolo_results):
@@ -907,7 +955,7 @@ class CustomVideoObjectDetection:
                                frame_detection_interval=1, minimum_percentage_probability=50, log_progress=False,
                                display_percentage_probability=True, display_object_name=True, save_detected_video=True,
                                per_frame_function=None, per_second_function=None, per_minute_function=None,
-                               video_complete_function=None, return_detected_frame=False, detection_timeout = None):
+                               video_complete_function=None, return_detected_frame=False, detection_timeout = None, codec='MJPG'):
 
 
 
@@ -1001,7 +1049,7 @@ class CustomVideoObjectDetection:
 
         frame_width = int(input_video.get(3))
         frame_height = int(input_video.get(4))
-        output_video = cv2.VideoWriter(output_video_filepath, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'),
+        output_video = cv2.VideoWriter(output_video_filepath, cv2.VideoWriter_fourcc(*codec),
                                        frames_per_second,
                                        (frame_width, frame_height))
 
@@ -1069,8 +1117,6 @@ class CustomVideoObjectDetection:
                     output_frames_count_dict[counting] = output_objects_count
 
 
-                    if (save_detected_video == True):
-                        output_video.write(detected_frame)
 
                     if (counting == 1 or check_frame_interval == 0):
                         if (per_frame_function != None):
@@ -1101,7 +1147,10 @@ class CustomVideoObjectDetection:
                                         this_second_counting[eachItem] = eachCountingDict[eachItem]
 
                             for eachCountingItem in this_second_counting:
-                                this_second_counting[eachCountingItem] = int(this_second_counting[eachCountingItem] / frames_per_second)
+                                if int(this_second_counting[eachCountingItem] / frames_per_second) == 0:
+                                    this_second_counting[eachCountingItem] = int(1)
+                                else:
+                                    this_second_counting[eachCountingItem] = int(this_second_counting[eachCountingItem] / frames_per_second)
 
                             if (return_detected_frame == True):
                                 per_second_function(int(counting / frames_per_second),
@@ -1147,6 +1196,8 @@ class CustomVideoObjectDetection:
                                                     this_minute_output_object_array, this_minute_counting_array,
                                                     this_minute_counting)
 
+                    if (save_detected_video == True):
+                        output_video.write(detected_frame)
 
                 else:
                     break
@@ -1342,7 +1393,7 @@ class CustomDetectionUtils:
         if label < len(self.__colors):
             return self.__colors[label]
         else:
-            return 0, 255, 0
+            return (0, 255, 0)
 
     def draw_boxes_and_caption(self, image_frame, v_boxes, v_labels, v_scores, show_names=False, show_percentage=False):
 
@@ -1356,15 +1407,19 @@ class CustomDetectionUtils:
 
             label = ""
             if show_names and show_percentage:
-                label = "%s : %.3f" % (v_labels[i], v_scores[i])
+                label = "%s : %.2f" % (v_labels[i], v_scores[i])
             elif show_names:
                 label = "%s" % (v_labels[i])
             elif show_percentage:
-                label = "%.3f" % (v_scores[i])
+                label = "%.2f" % (v_scores[i])
 
             if show_names or show_percentage:
                 b = np.array([x1, y1, x2, y2]).astype(int)
-                cv2.putText(image_frame, label, (b[0], b[1] - 10), cv2.FONT_HERSHEY_PLAIN, 1, (200, 0, 0), 3)
-                cv2.putText(image_frame, label, (b[0], b[1] - 10), cv2.FONT_HERSHEY_PLAIN, 1, (255, 255, 255), 2)
+
+                ft = cv2.freetype.createFreeType2()
+                ft.loadFontData(fontFileName='Ubuntu-B.ttf', id=0)
+                ft.putText(image_frame, label, (b[0], b[1] - 10), fontHeight=15, color=(255, 255, 255), thickness=-1, line_type=cv2.LINE_AA, bottomLeftOrigin=True) # To tutaj działało
+                # cv2.putText(image_frame, label, (b[0], b[1] - 10), cv2.FONT_HERSHEY_PLAIN, 1, (200, 0, 0), 3)
+                # cv2.putText(image_frame, label, (b[0], b[1] - 10), cv2.FONT_HERSHEY_PLAIN, 1, (255, 255, 255), 2)
 
         return image_frame

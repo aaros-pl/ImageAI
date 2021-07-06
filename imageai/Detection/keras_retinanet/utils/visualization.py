@@ -41,9 +41,13 @@ def draw_caption(image, box, caption):
         box     : A list of 4 elements (x1, y1, x2, y2).
         caption : String containing the text to draw.
     """
+    ft = cv2.freetype.createFreeType2()
+    ft.loadFontData(fontFileName='Ubuntu-B.ttf', id=0)
     b = np.array(box).astype(int)
-    cv2.putText(image, caption, (b[0], b[1] - 10), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 3)
-    cv2.putText(image, caption, (b[0], b[1] - 10), cv2.FONT_HERSHEY_PLAIN, 1, (255, 255, 255), 2)
+    # cv2.putText(image, caption, (b[0], b[1] - 10), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 3)
+    # cv2.putText(image, caption, (b[0], b[1] - 10), cv2.FONT_HERSHEY_PLAIN, 1, (255, 255, 255), 2)
+    ft.putText(image, caption, (b[0], b[1] - 10), fontHeight=15, color=(255, 255, 255), thickness=-1, line_type=cv2.LINE_AA, bottomLeftOrigin=True) # To tutaj działało
+    # ft.putText(image, caption, (b[0], b[1] - 10), fontHeight=16, color=(0, 0, 0), thickness=-1, line_type=cv2.LINE_AA, bottomLeftOrigin=True)
 
 
 def draw_boxes(image, boxes, color, thickness=2):

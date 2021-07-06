@@ -22,6 +22,9 @@ def get_session():
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     return tf.Session(config=config)
+    # gpu_options = tf.compat.v1.GPUOptions(allow_growth=True)
+    # sess = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(gpu_options=gpu_options))
+    # return sess
 
 
 class ObjectDetection:
@@ -858,7 +861,7 @@ class ObjectDetection:
                             if (os.path.exists(objects_dir) == False):
                                 os.mkdir(objects_dir)
 
-                        label = "{} {:.2f}".format(predicted_class, score)
+                        label = "{}: {:.2f}%".format(predicted_class, (score*100))
 
                         top, left, bottom, right = box
                         top = max(0, np.floor(top + 0.5).astype('int32'))
@@ -1160,7 +1163,7 @@ class VideoObjectDetection:
 
                 frame_width = int(input_video.get(3))
                 frame_height = int(input_video.get(4))
-                output_video = cv2.VideoWriter(output_video_filepath, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'),
+                output_video = cv2.VideoWriter(output_video_filepath, cv2.VideoWriter_fourcc('M', 'P', '4', 'V'),
                                                frames_per_second,
                                                (frame_width, frame_height))
 
@@ -1222,6 +1225,7 @@ class VideoObjectDetection:
                         detected_copy = cv2.cvtColor(detected_copy, cv2.COLOR_BGR2RGB)
 
                         if (save_detected_video == True):
+                            detected_copy = cv2.cvtColor(detected_copy, cv2.COLOR_BGR2RGB)
                             output_video.write(detected_copy)
 
                         if (counting == 1 or check_frame_interval == 0):
@@ -1414,7 +1418,8 @@ class VideoObjectDetection:
                                      display_percentage_probability=True, display_object_name=True,
                                      save_detected_video=True, per_frame_function=None, per_second_function=None,
                                      per_minute_function=None, video_complete_function=None,
-                                     return_detected_frame=False, detection_timeout = None, thread_safe=False):
+                                     return_detected_frame=False, detection_timeout = None, thread_safe=False,
+                                     codec="MJPG"):
 
         """
                             'detectObjectsFromVideo()' function is used to detect specific object(s) observable in the given video path or given camera live stream input:
@@ -1535,13 +1540,17 @@ class VideoObjectDetection:
                 if (camera_input != None):
                     input_video = camera_input
 
-                output_video_filepath = output_file_path + '.avi'
+                if save_detected_video==True:
+                    output_video_filepath = output_file_path + '.avi'
 
-                frame_width = int(input_video.get(3))
-                frame_height = int(input_video.get(4))
-                output_video = cv2.VideoWriter(output_video_filepath, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'),
-                                               frames_per_second,
-                                               (frame_width, frame_height))
+                    frame_width = int(input_video.get(3))
+                    frame_height = int(input_video.get(4))
+                    # global output_video
+                    output_video = cv2.VideoWriter(output_video_filepath, cv2.VideoWriter_fourcc(*codec),
+                                                   frames_per_second,
+                                                   (frame_width, frame_height))
+
+
 
                 counting = 0
                 predicted_numbers = None
@@ -1598,9 +1607,12 @@ class VideoObjectDetection:
 
                         output_frames_count_dict[counting] = output_objects_count
 
-                        detected_copy = cv2.cvtColor(detected_copy, cv2.COLOR_BGR2RGB)
+                        # detected_copy = cv2.cvtColor(detected_copy, cv2.COLOR_BGR2RGB)
+
+                        # yield detected_copy
 
                         if (save_detected_video == True):
+                            # detected_copy = cv2.cvtColor(detected_copy, cv2.COLOR_BGR2RGB)
                             output_video.write(detected_copy)
 
                         if (counting == 1 or check_frame_interval == 0):
@@ -1632,7 +1644,10 @@ class VideoObjectDetection:
                                             this_second_counting[eachItem] = eachCountingDict[eachItem]
 
                                 for eachCountingItem in this_second_counting:
-                                    this_second_counting[eachCountingItem] = int(this_second_counting[eachCountingItem] / frames_per_second)
+                                    if int(this_second_counting[eachCountingItem] / frames_per_second) == 0:
+                                        this_second_counting[eachCountingItem] = int(1)
+                                    else:
+                                        this_second_counting[eachCountingItem] = int(this_second_counting[eachCountingItem] / frames_per_second)
 
                                 if (return_detected_frame == True):
                                     per_second_function(int(counting / frames_per_second),

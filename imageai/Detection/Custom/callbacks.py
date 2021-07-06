@@ -17,7 +17,7 @@ class CustomTensorBoard(TensorBoard):
             for name, value in logs.items():
                 if name in ['batch', 'size']:
                     continue
-                summary = tf.Summary()
+                summary = tf.compat.v1.Summary()
                 summary_value = summary.value.add()
                 summary_value.simple_value = value.item()
                 summary_value.tag = name
@@ -34,11 +34,14 @@ class CustomModelCheckpoint(ModelCheckpoint):
         self.model_to_save = model_to_save
 
     def on_epoch_end(self, epoch, logs=None):
+    # def on_epoch_end(self, epoch, logs=None, today=None):
         logs = logs or {}
+        # today = today or ""
         self.epochs_since_last_save += 1
         if self.epochs_since_last_save >= self.period:
             self.epochs_since_last_save = 0
-            filepath = self.filepath.format(epoch=epoch + 1, **logs)
+            filepath = self.filepath.format(epoch=epoch, **logs)
+            # filepath = self.filepath.format(today=today, epoch=epoch, **logs)
             if self.save_best_only:
                 current = logs.get(self.monitor)
                 if current is None:
@@ -47,9 +50,9 @@ class CustomModelCheckpoint(ModelCheckpoint):
                 else:
                     if self.monitor_op(current, self.best):
                         if self.verbose > 0:
-                            print('\nEpoch %05d: %s improved from %0.5f to %0.5f,'
-                                  ' saving model to %s'
-                                  % (epoch + 1, self.monitor, self.best,
+                            print('Epoch %03d: %s improved from %0.5f to %0.5f,'
+                                  ' saving model to %s\n'
+                                  % (epoch+1, self.monitor, self.best,
                                      current, filepath))
                         self.best = current
                         if self.save_weights_only:
@@ -58,14 +61,15 @@ class CustomModelCheckpoint(ModelCheckpoint):
                             self.model_to_save.save(filepath, overwrite=True)
                     else:
                         if self.verbose > 0:
-                            print('\nEpoch %05d: %s did not improve from %0.5f' %
-                                  (epoch + 1, self.monitor, self.best))
+                            print('Epoch %03d: %s did not improve from %0.5f\n' %
+                                  (epoch+1, self.monitor, self.best))
             else:
                 if self.verbose > 0:
-                    print('\nEpoch %05d: saving model to %s' % (epoch + 1, filepath))
+                    print('Epoch %03d: saving model to %s\n' % (epoch + 1, filepath))
                 if self.save_weights_only:
                     self.model_to_save.save_weights(filepath, overwrite=True)
                 else:
                     self.model_to_save.save(filepath, overwrite=True)
 
         super(CustomModelCheckpoint, self).on_batch_end(epoch, logs)
+        # super(CustomModelCheckpoint, self).on_batch_end(today, epoch, logs)
