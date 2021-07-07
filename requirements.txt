@@ -4,4 +4,4 @@ pillow
 scipy
 h5py==2.10.0
 matplotlib
-requirements/opencv_contrib_python-4.4.0.44-cp37-cp37m-win_amd64.whl
+requirements/opencv_python-4.4.0.46-cp37-cp37m-win_amd64.whl
