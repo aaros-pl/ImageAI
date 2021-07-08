@@ -14,8 +14,9 @@ To use **ImageAI-Custom** in your application developments, you must have instal
  - Keras 2.3.1
  - h5py 2.10
  
- For Windows use:
- First download requirements from Releases and then put them in requirements folder and run:
+ For Windows use
+ 1. First download requirements from Releases
+ 1. Then put them in requirements folder and run:
  ```bash
  pip install -r requirements.txt
  ```
